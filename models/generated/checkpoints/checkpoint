@@ -1,0 +1,6 @@
+model_checkpoint_path: "house_price_prediction_chk-50"
+all_model_checkpoint_paths: "house_price_prediction_chk-10"
+all_model_checkpoint_paths: "house_price_prediction_chk-20"
+all_model_checkpoint_paths: "house_price_prediction_chk-30"
+all_model_checkpoint_paths: "house_price_prediction_chk-40"
+all_model_checkpoint_paths: "house_price_prediction_chk-50"

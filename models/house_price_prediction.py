@@ -2,12 +2,27 @@ import tensorflow as tf
 import numpy as np
 import math
 import matplotlib
+import os
+import shutil
 
 # This is macOS specific,..grr
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+gen_dir_base_path= "./generated"
+
+# clean gen folder
+shutil.rmtree(gen_dir_base_path)
+
+
+def ensure_dir(directory):
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+
+ensure_dir(gen_dir_base_path + "/checkpoints")
+ensure_dir(gen_dir_base_path + "/saved-models")
 
 num_houses = 100
 np.random.seed(17)
@@ -77,9 +92,13 @@ optimizer = tf.train.GradientDescentOptimizer(learning_rate).minimize(tf_cost)
 
 init = tf.global_variables_initializer()
 
+# Check point saver
+saver = tf.train.Saver()
+
 with tf.Session() as session:
     session.run(init)
     log_every_itr = 2
+    chk_point_itr = 10
     num_training_itr = 50
 
     for itr in range(num_training_itr):
@@ -95,6 +114,10 @@ with tf.Session() as session:
                       "size_factor" , session.run(tf_size_factor), \
                       "price offset", session.run(tf_price_offset))
 
+            # Save check-points
+            if (itr + 1) % chk_point_itr == 0:
+                saver.save(session, gen_dir_base_path + "/checkpoints//house_price_prediction_chk", global_step=itr + 1)
+
     print("Optimization finished")
     training_cost = session.run(tf_cost,
                     feed_dict={tf_house_sizes: train_house_sizes_norm, tf_house_prices: train_house_prices_norm})
@@ -103,8 +126,39 @@ with tf.Session() as session:
           "price offset", session.run(tf_price_offset))
 
     # Step 4 -  Predict price for given size of house
-    for size in range(1000):
+
+    # Generate random test data to call inference
+    sizes = np.random.randint(low=2000, high=20000, size=10)
+    for size in sizes:
         print("Price for house of size", "%04d"%size," = ", "%.9f" % session.run(tf_price_predict, feed_dict={tf_house_sizes: size}))
+
+    # Step 5 -  Export model as saved model so that it can be served using tensorflow serving
+    builder = tf.saved_model.builder.SavedModelBuilder(gen_dir_base_path + "/saved-models/house_price_prediction_saved_model")
+    tf_info_house_size = tf.saved_model.utils.build_tensor_info(tf_house_sizes)
+    tf_info_house_price = tf.saved_model.utils.build_tensor_info(tf_price_predict)
+
+    prediction_signature = (
+        tf.saved_model.signature_def_utils.build_signature_def(
+            inputs={'house_size': tf_info_house_size},
+            outputs={'house_price': tf_info_house_price},
+            method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME))
+
+    builder.add_meta_graph_and_variables(
+        session, [tf.saved_model.tag_constants.SERVING],
+        signature_def_map={
+            tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+                prediction_signature
+        },
+    )
+    builder.save()
+
+shutil.make_archive(gen_dir_base_path + "/saved-models"+"/house_price_prediction_saved_model",
+                    'zip',
+                    gen_dir_base_path + "/saved-models/house_price_prediction_saved_model")
+shutil.rmtree(gen_dir_base_path + "/saved-models/house_price_prediction_saved_model")
+
+
+
 
 
 
